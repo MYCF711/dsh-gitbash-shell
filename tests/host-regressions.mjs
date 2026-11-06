@@ -14,6 +14,9 @@ const deferred = () => {
 }
 const migration = source.slice(source.indexOf('async function migrateVariantDefault('), source.indexOf('\nasync function registerVariant('))
 const declarative = source.slice(source.indexOf('async function runDeclarativeEra('), source.indexOf('\nexport async function apply('))
+  // The slice can include exported helpers declared between the reconciler and
+  // apply(); new Function evaluates a function body, not an ES module.
+  .replace(/^export /gm, '')
 
 function runtime(register) {
   return new Function('cleanupLegacyTrees', 'resolveSkillsDir', 'probeHostExtras', 'effectivePresetIds', 'registerVariant', 'TAG', 'PEER_CAPABILITY', 'peerFact', 'PEER_PYTHON_FIELD', 'peerBackend', 'pythonBackendActive', 'PEER_PYTHON_BACKEND_FIELD', 'PRESET_IDS', 'VARIANT_DEFAULT_SUCCESSORS', migration + declarative + '\nreturn runDeclarativeEra')(

@@ -1229,7 +1229,7 @@ test('compositions: dsh 0.2.1 host additions ride the probe, never the default',
   assert.equal(base.some((r) => r.id === 'tool-schedule' || r.id === 'time-context'), false)
 })
 
-test('compositions: alpha.2 executor shape and the older-host fallback', async () => {
+test('compositions: rc1 executor shape and the older-host fallback', async () => {
   const { pluginsFor } = await import('../src/compositions.js')
   const row = (rows, id) => rows.find((r) => r.id === id)
   const ids = (rows) => rows.map((r) => r.id)
@@ -1256,13 +1256,14 @@ test('compositions: alpha.2 executor shape and the older-host fallback', async (
   assert.deepEqual(row(legacy, 'tool-presentation'), { id: 'tool-presentation', name: '@deepseek-ai/dsh-agent-tool-presentation', config: { mode: 'ptc' } })
   assert.equal(row(legacy, 'tool-executor-ptc'), undefined)
 
-  // Manager/market: alpha.2 gates every variant on the live profile context;
-  // the older architecture keeps the shipped split (off on standard/ptc, on
+  // Manager/market: rc1 enables the manager on standard/cordis only with a
+  // profile context, keeps it off on PTC, and gates the market on cordis alone.
+  // The older architecture keeps the shipped split (off on standard/ptc, on
   // for cordis, which every web deployment backs with a profile context).
   for (const kind of ['standard', 'ptc', 'cordis']) {
     const withProfile = pluginsFor({ kind, gitBash: true, skillsDir: '/s', hostExtras: { executorPlugin: true, profileContext: true, pluginMarket: true } })
-    assert.equal(row(withProfile, 'tool-plugin-manager').disabled, undefined, kind)
-    assert.equal(row(withProfile, 'tool-plugin-market').disabled, undefined, kind)
+    assert.equal(row(withProfile, 'tool-plugin-manager').disabled, kind === 'ptc' ? true : undefined, kind)
+    assert.equal(row(withProfile, 'tool-plugin-market').disabled, kind === 'cordis' ? undefined : true, kind)
     const without = pluginsFor({ kind, gitBash: true, skillsDir: '/s', hostExtras: { executorPlugin: true, profileContext: false, pluginMarket: true } })
     assert.equal(row(without, 'tool-plugin-manager').disabled, true, kind)
     assert.equal(row(without, 'tool-plugin-market').disabled, true, kind)

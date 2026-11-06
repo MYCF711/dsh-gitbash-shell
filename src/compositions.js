@@ -238,19 +238,17 @@ export function pluginsFor({ kind, gitBash, skillsDir, pythonActive = false, hos
     id: 'tool-plugin-manager',
     name: '@deepseek-ai/dsh-plugin-manager/tools',
     // The official rows: before 0.2.2-alpha.2 ptc/standard ship it disabled and
-    // cordis keeps it on (every web deployment has a profile context). From
-    // 0.2.2-alpha.2 on every preset enables it exactly when a profile context
-    // exists, so the probe decides for all three variants.
-    ...(executorPlugin ? off(!profileContext) : off(kind !== 'cordis')),
+    // cordis keeps it on. In 0.2.2-rc.1 standard/cordis enable it only with a
+    // profile context, while PTC keeps it disabled.
+    ...(executorPlugin ? off(kind === 'ptc' || !profileContext) : off(kind !== 'cordis')),
   })
   if (pluginMarket) {
     rows.push({
-      // The official 0.2.1-alpha.4 rows, following the manager's split on
-      // both architectures (alpha.4: disabled on standard/ptc, profile-gated
-      // on cordis; alpha.2 of 0.2.2: profile-gated everywhere).
+      // The official rows: standard/PTC stay disabled in 0.2.2-rc.1;
+      // cordis alone follows the profile-context gate.
       id: 'tool-plugin-market',
       name: '@deepseek-ai/dsh-plugin-market/tools',
-      ...(executorPlugin ? off(!profileContext) : off(kind !== 'cordis')),
+      ...(executorPlugin ? off(kind !== 'cordis' || !profileContext) : off(kind !== 'cordis')),
     })
   }
   return rows
