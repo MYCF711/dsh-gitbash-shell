@@ -2141,6 +2141,23 @@ async function runDeclarativeEra(ctx, presetIds, readSuppress, readBashResolutio
   ctx.inject(['settings'], () => { void reconcile() })
 }
 
+/**
+ * Extract the routing guidance into a real system-prompt section. Since
+ * 0.2.2-alpha.2 the assemble waterfall no longer carries mutable tools, and
+ * tools.schemas() returns detached clones; editing those clones cannot reach
+ * the provider-owned final tool declarations. The section is the supported
+ * prompt surface and is assembled from the same live visible tool set.
+ */
+export function toolRoutingSectionText(offeredTools, options) {
+  const tools = Array.isArray(offeredTools) ? offeredTools.map(tool => ({ ...tool })) : []
+  applyToolRouting(tools, options)
+  return tools.map(tool => {
+    if (typeof tool?.description !== 'string') return ''
+    const at = tool.description.indexOf('[gitbash tool routing]')
+    return at === -1 ? '' : tool.description.slice(at)
+  }).filter(Boolean).join('\n\n')
+}
+
 export async function apply(ctx, config = {}) {
   const presetIds = Array.isArray(config.presets) && config.presets.length > 0 ? config.presets : PRESET_IDS
 
@@ -2324,7 +2341,7 @@ export async function apply(ctx, config = {}) {
           // PTC may expose only run_code here: its generic SDK decision rule
           // relies on the registered bindings' own descriptions, not guessed
           // hidden names. Replace our block on reassembly/visibility changes.
-          if (assembly && typeof assembly === 'object') {
+          if (!hostExtras.executorPlugin && assembly && typeof assembly === 'object') {
             applyToolRouting(offeredTools, {
               pwshVisible: liveSettings.pwshTool() === true,
               msys: applies && dialect.posixPaths === true,
@@ -2503,6 +2520,28 @@ export async function apply(ctx, config = {}) {
     try {
       ctx.inject(['systemPrompt'], (pctx) => {
         try {
+          if (hostExtras.executorPlugin) {
+            pctx.effect(() => pctx.systemPrompt.section({
+              name: 'gitbash-shell:tool-routing',
+              order: 1005,
+              text: (assembleContext) => {
+                try {
+                  const dialect = liveSettings.dialect()
+                  const offered = pctx.get('tools')?.schemas?.(
+                    assembleContext?.agent ?? assembleContext?.scope,
+                    assembleContext?.toolSet,
+                  ) ?? []
+                  return toolRoutingSectionText(offered, {
+                    pwshVisible: liveSettings.pwshTool() === true,
+                    msys: dialectApplies(dialect, assembleContext?.agent) && dialect.posixPaths === true,
+                    terminalGitBash: terminalDialect.gitBash === true,
+                  })
+                } catch {
+                  return ''
+                }
+              },
+            }), 'dsh-gitbash-shell: tool-routing section')
+          }
           pctx.effect(() => pctx.systemPrompt.context({
             name: 'gitbash-shell:posix-paths',
             order: 126,
