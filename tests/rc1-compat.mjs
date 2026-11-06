@@ -1,7 +1,7 @@
 // Targeted DSH 0.2.2-rc.1 compatibility probe for the installed 0.47.2 baseline.
 // Run only with the rc1 Electron binary in ELECTRON_RUN_AS_NODE=1 mode.
 import assert from 'node:assert/strict'
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, symlinkSync, writeFileSync } from 'node:fs'
+import { cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { createRequire, registerHooks } from 'node:module'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
@@ -174,8 +174,10 @@ try {
   mkdirSync(modulesDir, { recursive: true })
   writeFileSync(join(profileDir, 'package.json'), `${JSON.stringify({ name: 'gitbash-rc1-profile', private: true, dsh: { profile: { bundles: ['dsh-gitbash-shell'] } } }, null, 2)}\n`)
   const link = join(modulesDir, 'dsh-gitbash-shell')
-  symlinkSync(worktree, link, 'junction')
-  assert.equal(realpathSync(link), realpathSync(worktree))
+  // Never link a disposable profile back into the real Git worktree: profile
+  // cleanup must not be able to traverse into .git metadata on any filesystem.
+  cpSync(worktree, link, { recursive: true, filter: source => !source.startsWith(join(worktree, '.git')) })
+  assert.equal(readFileSync(join(link, 'package.json'), 'utf8'), readFileSync(join(worktree, 'package.json'), 'utf8'))
   const profile = appBoot.loadProfileDirectory('dsh-probe', profileDir, hostAnchor, { userLayer: false })
   result.observations.skippedBundles = profile.skippedBundles
   check('official profile loading has skippedBundles=[]', profile.skippedBundles.length === 0, profile.skippedBundles)
