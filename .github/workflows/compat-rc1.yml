@@ -1,0 +1,27 @@
+name: compat-rc1
+
+on:
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: windows-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+          package-manager-cache: false
+      - name: Install locked test dependencies
+        run: npm ci --ignore-scripts --omit=optional
+      - name: Run full test suite
+        run: npm test
+      - name: Check published files
+        run: npm pack --dry-run --ignore-scripts
