@@ -2,7 +2,7 @@ import test from 'node:test'
 import assert from 'node:assert/strict'
 import { terminalDialect } from '../src/terminal-bundle.js'
 import { readFileSync } from 'node:fs'
-import { rewriteCodePaths, scanCodeLiterals, runCodeHintFor, translateDispatch, dialectApplies, windowsToMsys, rewriteResultPaths, rewriteErrorContent, rewriteErrorMessage } from '../src/index.js'
+import { rewriteCodePaths, scanCodeLiterals, runCodeHintFor, translateDispatch, dialectApplies, windowsToMsys, rewriteResultPaths, rewriteErrorContent, rewriteErrorMessage, toolRoutingSectionText } from '../src/index.js'
 import { bashDescription, createBashToolModule } from '../src/bash-tool.js'
 import { applyToolRouting, toolRoutingHintFor } from '../src/inline-tools.js'
 import { pathToolDescription } from '../src/path-tool.js'
@@ -87,8 +87,8 @@ test('compatibility: actual prompt listener reads the live codePaths gate', () =
     on(name, fn) { assert.equal(name, 'system-prompt/assemble'); handler = fn },
     get(name) { assert.equal(name, 'tools'); return { schemas: (_agent, toolSet) => toolSet === undefined ? [] : [{ name: 'run_code' }] } },
   }
-  new Function('ctx', 'liveSettings', 'dialectApplies', 'windowsToMsys', 'runCodeHintFor', 'applyToolRouting', 'terminalDialect', source.slice(start, end))(
-    ctx, { dialect: () => dialect, pwshTool: () => false }, dialectApplies, windowsToMsys, runCodeHintFor, applyToolRouting, terminalDialect)
+  new Function('ctx', 'liveSettings', 'dialectApplies', 'windowsToMsys', 'runCodeHintFor', 'applyToolRouting', 'terminalDialect', 'hostExtras', source.slice(start, end))(
+    ctx, { dialect: () => dialect, pwshTool: () => false }, dialectApplies, windowsToMsys, runCodeHintFor, applyToolRouting, terminalDialect, { executorPlugin: false })
   const assemble = agent => {
     const assembly = { contexts: [{ name: 'gitbash-shell:posix-paths', text: 'BASE' }], sections: [] }
     handler(assembly, { agent, toolSet: {} }, () => {})
@@ -106,6 +106,37 @@ test('compatibility: actual prompt listener reads the live codePaths gate', () =
   assert.equal(assemble(), 'BASE')
   dialect = { ...dialect, posixPaths: true, subagentDialect: false }
   assert.equal(assemble({ session: { header: { origin: 'subagent' } } }), 'BASE')
+})
+
+test('compatibility: rc1 listener preserves provider tools while the section carries routing', () => {
+  const source = readFileSync(new URL('../src/index.js', import.meta.url), 'utf8')
+  const start = source.indexOf("ctx.on('system-prompt/assemble',")
+  const end = source.indexOf("      console.log(TAG + ' prompt-assembly path dialect active", start)
+  assert.ok(start >= 0 && end > start)
+  let handler
+  let routingCalls = 0
+  const offered = [{ name: 'bash', description: 'BASE' }, { name: 'run_code', description: 'PTC_BASE' }]
+  const ctx = {
+    on(name, fn) { assert.equal(name, 'system-prompt/assemble'); handler = fn },
+    get(name) { assert.equal(name, 'tools'); return { schemas: () => offered } },
+  }
+  new Function('ctx', 'liveSettings', 'dialectApplies', 'windowsToMsys', 'runCodeHintFor', 'applyToolRouting', 'terminalDialect', 'hostExtras', source.slice(start, end))(
+    ctx,
+    { dialect: () => ({ posixPaths: false, codePaths: false, subagentDialect: true }), pwshTool: () => false },
+    dialectApplies, windowsToMsys, runCodeHintFor,
+    () => { routingCalls += 1 }, terminalDialect, { executorPlugin: true },
+  )
+  const assembly = { contexts: [], sections: [], tools: offered }
+  handler(assembly, { agent: undefined, toolSet: {} }, () => {})
+  assert.equal(routingCalls, 0, 'rc1 must not edit detached schemas in the legacy listener')
+  assert.deepEqual(offered.map(tool => tool.description), ['BASE', 'PTC_BASE'])
+
+  const section = toolRoutingSectionText(offered, { pwshVisible: false, msys: true })
+  assert.match(section, /Prefer this bash tool/)
+  assert.match(section, /\/c\/Users/)
+  assert.match(section, /Inside run_code, call only bindings actually offered/)
+  assert.equal((section.match(/\[gitbash tool routing\]/g) ?? []).length, 2)
+  assert.deepEqual(offered.map(tool => tool.description), ['BASE', 'PTC_BASE'], 'section rendering clones its input')
 })
 
 test('routing: offered native/path/pwsh tools have explicit pre-execution decision criteria', () => {
